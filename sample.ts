@@ -13,9 +13,11 @@ function fetch(range: IRange): Promise<IPerson[]> {
 	]);
 }
 
+// The only mandatory option is the fetcher and indexer.
 let collection = PartialCollection({
 	indexer: 'rowNumber',
-	fetcher: fetch
+	fetcher: fetch,
+	// identifier: x => x
 });
 
 // Need to provide maxCount to collection, otherwise warning erros will throw.

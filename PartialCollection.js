@@ -60,7 +60,7 @@ define(["require", "exports"], function (require, exports) {
      */
     function PartialCollection(options) {
         var internal = {};
-        var indexer = options.indexer, maxCount = options.maxCount, fetcher = options.fetcher;
+        var indexer = options.indexer, maxCount = options.maxCount, fetcher = options.fetcher, identifier = options.identifier;
         var _indexer = (function () {
             if (typeof indexer === 'string') {
                 var prop_1 = indexer;
@@ -70,9 +70,25 @@ define(["require", "exports"], function (require, exports) {
                 return indexer;
             }
         })();
+        var _identifier = (function () {
+            if (typeof identifier === 'string') {
+                var prop_2 = identifier;
+                return function (item) { return item[prop_2]; };
+            }
+            else {
+                return identifier || (function (x) { return x; });
+            }
+        })();
         function throwIfUninitialized() {
             if (typeof maxCount !== 'number') {
-                throw new Error('PartialArray requires maxCount to be set to operate correctly.');
+                throw new Error('PartialCollection requires maxCount to be set to operate correctly.');
+            }
+        }
+        function throwIfIndexerDNE(indices) {
+            if (!_indexer) {
+                if (typeof indices !== 'object' && typeof indices.map !== 'function') {
+                    throw new Error('In the absence of an indexer, PartialCollection.(un)load needs the indices array to be provided.');
+                }
             }
         }
         function getSingle(index) {
@@ -140,8 +156,7 @@ define(["require", "exports"], function (require, exports) {
             var promises = partialResults.map(function (r) {
                 if (isMissingResult(r)) {
                     return fetcher(r).then(function (results) {
-                        load(results);
-                        return results;
+                        return load(results);
                     });
                 }
                 else {
@@ -154,12 +169,15 @@ define(["require", "exports"], function (require, exports) {
         }
         function load(items) {
             throwIfUninitialized();
-            items.forEach(function (item) {
+            var results = [];
+            items.forEach(function (item, i) {
                 var index = _indexer(item);
                 // Sanity check
                 if (canBeInteger(index)) {
                     if (index < maxCount) {
-                        internal['' + index] = item;
+                        var _item = _identifier(item);
+                        internal['' + index] = _item;
+                        results.push(_item);
                     }
                     else {
                         // consider logging warnings here, for exceeding maxCount
@@ -169,10 +187,13 @@ define(["require", "exports"], function (require, exports) {
                     // consider logging warnings here, for not having an integer index
                 }
             });
+            return results;
         }
         function unload(items) {
             items.forEach(function (item) {
-                delete internal['' + _indexer(item)];
+                var index = _indexer(item);
+                // more relaxed about indexing errors.
+                delete internal['' + index];
             });
         }
         function unloadRange(range) {

@@ -2,9 +2,10 @@ interface IMap<T> {
 	[key: string]: T;
 }
 type Mapper<T, U> = (item: T) => U;
-interface IOptions<T> {
-	indexer: string|Mapper<T, number>;
-	fetcher: (range: IRange) => Promise<T[]>;
+interface IOptions<T, U> {
+	fetcher: (range: IRange) => Promise<U[]>;
+	identifier?: string|Mapper<U, T>;
+	indexer: string|Mapper<U, number>;
 	maxCount?: number;
 }
 
@@ -21,15 +22,14 @@ interface MissingResult {
 	start: number; end: number;
 	results: undefined;
 }
-interface IPartialCollection<T> {
+interface IPartialCollection<T, U> {
 	maxCount?: number;
 	get(index: number): T|null|undefined;
 	fetch(range: IRange): Promise<T[]>;
-	load(items: T[]): void;
-	unload(items: T[]): void;
+	load(items: U[]): T[];
+	unload(items: U[]): void;
 	unloadRange(range: IRange): void;
 }
-
 
 function canBeInteger(value: any): boolean {
 	if (typeof value === 'string') {
@@ -82,24 +82,39 @@ function flatMap<T>(items: T[][]): T[] {
 /**
  * Readonly
  */
-export function PartialCollection<T extends object>(options: IOptions<T>): IPartialCollection<T> {
+export function PartialCollection<U extends object, T extends object = U>(options: IOptions<T, U>): IPartialCollection<T, U> {
 	let internal: IMap<T> = { };
 	let {
-		indexer, maxCount, fetcher
+		indexer, maxCount, fetcher, identifier
 	} = options;
 	
 	let _indexer = (function () {
 		if (typeof indexer === 'string') {
 			let prop = indexer;
-			return (item: T) => (<any>item)[prop] as number;
+			return (item: U) => (<any>item)[prop] as number;
 		} else {
 			return indexer;
+		}
+	})();
+	let _identifier = (function () {
+		if (typeof identifier === 'string') {
+			let prop = identifier;
+			return (item: U) => (<any>item)[prop] as T;
+		} else {
+			return identifier || ((x: any) => x as T);
 		}
 	})();
 
 	function throwIfUninitialized() {
 		if (typeof maxCount !== 'number') {
-			throw new Error('PartialArray requires maxCount to be set to operate correctly.');
+			throw new Error('PartialCollection requires maxCount to be set to operate correctly.');
+		}
+	}
+	function throwIfIndexerDNE(indices?: number[]) {
+		if (!_indexer) {
+			if (typeof indices !== 'object' && typeof indices!.map !== 'function') {
+				throw new Error('In the absence of an indexer, PartialCollection.(un)load needs the indices array to be provided.');
+			}
 		}
 	}
 
@@ -165,8 +180,7 @@ export function PartialCollection<T extends object>(options: IOptions<T>): IPart
 		let promises: Promise<T[]>[] = partialResults.map(r => {
 			if (isMissingResult(r)) {
 				return fetcher(r).then(results => {
-					load(results);
-					return results;
+					return load(results);
 				});
 			} else {
 				return Promise.resolve(r.results);
@@ -178,14 +192,17 @@ export function PartialCollection<T extends object>(options: IOptions<T>): IPart
 		});
 	}
 
-	function load(items: T[]): void {
+	function load(items: U[]): T[] {
 		throwIfUninitialized();
-		items.forEach(item => {
+		let results: T[] = [];
+		items.forEach((item, i) => {
 			let index = _indexer(item);
 			// Sanity check
 			if (canBeInteger(index)) {
 				if (index < maxCount!) { 
-					internal['' + index] = item;
+					let _item = _identifier(item);
+					internal['' + index] = _item;
+					results.push(_item);
 				} else {
 					// consider logging warnings here, for exceeding maxCount
 				}
@@ -193,10 +210,13 @@ export function PartialCollection<T extends object>(options: IOptions<T>): IPart
 				// consider logging warnings here, for not having an integer index
 			}
 		});
+		return results;
 	}
-	function unload(items: T[]): void {
+	function unload(items: U[]): void {
 		items.forEach(item => {
-			delete internal['' + _indexer(item)];
+			let index = _indexer(item);
+			// more relaxed about indexing errors.
+			delete internal['' + index];
 		});
 	}
 	function unloadRange(range: IRange): void {
@@ -225,7 +245,7 @@ export function PartialCollection<T extends object>(options: IOptions<T>): IPart
 			}
 		}
 	});
-	return proxy as IPartialCollection<T>;
+	return proxy as IPartialCollection<T, U>;
 }
 
 
