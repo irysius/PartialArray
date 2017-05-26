@@ -4,4 +4,5 @@
 
 	// Your import path will vary
 	import { PartialCollection } from 'PartialCollection';
-	let collection = new PartialCollection({});
+	
+	// see sample.ts for more details.
