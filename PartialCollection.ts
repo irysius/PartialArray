@@ -4,11 +4,11 @@ interface IMap<T> {
 type Mapper<T, U> = (item: T) => U;
 interface IOptions<T> {
 	indexer: string|Mapper<T, number>;
-	fetcher: (range: IRange) => PromiseLike<T[]>;
+	fetcher: (range: IRange) => Promise<T[]>;
 	maxCount?: number;
 }
 
-interface IRange {
+export interface IRange {
 	start: number; end: number;
 }
 type PartialResult<T> = (ExistingResult<T>|MissingResult)[];
@@ -21,10 +21,10 @@ interface MissingResult {
 	start: number; end: number;
 	results: undefined;
 }
-interface IPartialArray<T> {
+interface IPartialCollection<T> {
 	maxCount?: number;
 	get(index: number): T|null|undefined;
-	fetch(rang: IRange): PromiseLike<T[]>;
+	fetch(range: IRange): Promise<T[]>;
 	load(items: T[]): void;
 	unload(items: T[]): void;
 	unloadRange(range: IRange): void;
@@ -82,7 +82,7 @@ function flatMap<T>(items: T[][]): T[] {
 /**
  * Readonly
  */
-export function PartialArray<T extends object>(options: IOptions<T>): IPartialArray<T> {
+export function PartialCollection<T extends object>(options: IOptions<T>): IPartialCollection<T> {
 	let internal: IMap<T> = { };
 	let {
 		indexer, maxCount, fetcher
@@ -91,7 +91,7 @@ export function PartialArray<T extends object>(options: IOptions<T>): IPartialAr
 	let _indexer = (function () {
 		if (typeof indexer === 'string') {
 			let prop = indexer;
-			return (item: T) => item[prop] as number;
+			return (item: T) => (<any>item)[prop] as number;
 		} else {
 			return indexer;
 		}
@@ -158,11 +158,11 @@ export function PartialArray<T extends object>(options: IOptions<T>): IPartialAr
 		return results;
 	}
 
-	function fillResultsGaps(partialResults: PartialResult<T>): PromiseLike<T[]> {
+	function fillResultsGaps(partialResults: PartialResult<T>): Promise<T[]> {
 		throwIfUninitialized();
 		let i;
 		let results: T[] = [];
-		let promises: PromiseLike<T[]>[] = partialResults.map(r => {
+		let promises: Promise<T[]>[] = partialResults.map(r => {
 			if (isMissingResult(r)) {
 				return fetcher(r).then(results => {
 					load(results);
@@ -225,7 +225,7 @@ export function PartialArray<T extends object>(options: IOptions<T>): IPartialAr
 			}
 		}
 	});
-	return proxy as IPartialArray<T>;
+	return proxy as IPartialCollection<T>;
 }
 
 
